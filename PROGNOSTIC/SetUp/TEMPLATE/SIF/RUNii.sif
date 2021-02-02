@@ -1,0 +1,357 @@
+!! Name of the RUN 
+$name="RUN<ID>_"
+!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+$rhoi = <RHOI_SI>/(1.0e6*<YEARTOSEC>^2)
+$rhow = <RHOW_SI>/(1.0e6*<YEARTOSEC>^2)
+$gravity = <GRAVITY_SI>*<YEARTOSEC>^2
+$Lf = <LF_SI>*<YEARTOSEC>^2
+$cw = <CW_SI>*<YEARTOSEC>^2
+
+$Kt = <KT>
+
+$zsl = <ZSL>
+$n = <N>
+
+$parmlt = "<MISMIP_MELT_TYPE>"
+$gamma0 = <GAMMA0>
+$glm = <GLM>
+$basinnb = <BASINNB>
+$time_init = <TIME_INIT>
+$epsz = <EPSZ>
+
+$meltfac = rhow * cw / ( rhoi * Lf )
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Header
+  Mesh DB "." "mesh_<nbpart>"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Constants
+  sea level = Real $zsl
+  water density = Real $rhow
+  Ice density = Real $rhoi
+
+  Sea Water Specific heat = Real $cw
+  Ice fusion latent heat = Real $Lf
+  Transfer Factor = Real $Kt
+
+  ! For MISMIP_Melt Solver
+  Melt factor = Real $meltfac
+  Minimum thickness to Melt = Real $epsz
+  gamma0 = Real $gamma0
+  basinnb = Integer $basinnb
+
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Simulation
+  Coordinate System  = Cartesian 2D 
+  Simulation Type = Transient
+
+  Timestepping Method = "bdf"
+  BDF Order = 2
+  Output Intervals(1) = 10
+  Timestep Intervals(1) = 50
+  Timestep Sizes(1) = 0.1
+
+  Steady State Min Iterations = 1
+  Steady State Max Iterations = 2
+
+  Post File = "$name$.vtu"
+  OutPut File = "$name$.result"
+
+  Restart File = "RUN<ID-1>_.result"
+  Restart Position = 0
+
+  Max Output Level = 3
+
+  ! Melt
+  Experiment initial time = Real $time_init
+  ! Melt Parameterization, possible values = lin, quad, plus
+  Melt Parameterization = String $parmlt
+  Grounding Line Melt = Logical $glm
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body 1
+  Equation = 1
+  Body Force = 1
+  Material = 1
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!Initial Condition 1
+!End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body Force 1
+  Flow BodyForce 1 = Real 0.0            
+  Flow BodyForce 2 = Real 0.0              
+  Flow BodyForce 3 = Real $gravity
+
+  Top Surface Accumulation = Variable smb, smb_anomaly
+    Real MATC "tx(0)+tx(1)"
+
+  ! To determine the type of basal melt
+  Bottom Surface Accumulation = Equals <MELT_TYPE>
+
+  pdc_melt = Variable zb, GroundedMask
+    Real procedure "LGGEUSF" "BasalMeltPDC_ASE"
+
+! Water Pressure for effective pressure calculation
+  Water Pressure = Variable zb
+    Real procedure "LGGEUSF" "WaterPressure"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Material 1
+  Viscosity Exponent = Real $1.0e00/n
+  Critical Shear Rate = Real 1.0e-16
+
+  SSA Mean Viscosity = Equals eta
+  SSA Mean Density = Real $rhoi
+
+  SSA Critical Thickness = Real 1.0
+
+  ! slip coeff for the SSA
+  SSA Friction Law = String "linear"
+  SSA Friction Parameter = Equals cwl
+  !SSA Friction Parameter = Variable cwl
+  !  Real procedure "LGGEUSF" "TenPowerA"
+
+  ! Min Value for H
+  Min H = Real 1.0
+
+  ! For Save scalar to compute mass flux (=H*SSA_UV)
+  Flux = Equals H
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 1
+  Exec Solver = <EXEC_NC_MELT>
+  Equation = "Reader1"
+  Procedure = "GridDataReader" "GridDataReader"
+  Filename = File "<NC_MELT_FILE>"
+  
+  X Dim Name = String "x"
+  Y Dim Name = String "y"
+
+  X Var Name = String "x"
+  Y Var Name = String "y"
+
+  Variable 1 = File "melt"
+  Target Variable 1 = String "nc_melt"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 2
+   Equation = "Flotation"
+   Variable = GroundedMask
+   Procedure = "ElmerIceSolvers" "Flotation"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 3
+!   Exec Solver = never
+   Equation = "EffectivePressure"
+   Variable = "Effective Pressure"
+   Procedure = "LGGESolvers" "EffectivePressure"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 4
+  Equation = "upd4"
+  Variable = -nooutput dummy4
+  Procedure = "ElmerIceSolvers" "UpdateExport"
+
+  Exported Variable 1 = pdc_melt
+
+  Steady State Convergence Tolerance = 2.0
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 5
+  Equation = "SSA"
+  Variable = -dofs 2 "SSAVelocity"
+
+  Procedure = "LGGESolvers" "SSABasalSolver"
+
+  include LINEAR_SOLVER.txt
+
+  Nonlinear System Max Iterations = 50
+  Nonlinear System Convergence Tolerance  = 1.0e-04
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-03
+  Nonlinear System Relaxation Factor = 1.00
+
+  Nonlinear System Newton Max divergent iterations = Integer 4
+
+  Sub-Element GL parameterization = Logical True
+  GL integration points number = Integer 20
+
+  Steady State Convergence Tolerance = 2.0
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 6
+  Equation = "Thickness"
+  Variable = -dofs 1 "H"
+
+  !compute solver time = logical True
+
+  Exported Variable 1 = -dofs 1 "H Residual"
+  Exported Variable 2 = DhDt
+
+  Procedure = "ElmerIceSolvers" "ThicknessSolver"
+
+  !include LINEAR_SOLVER.txt
+  Linear System Solver = Direct
+  Linear System Direct Method = cpardiso
+
+  Linear System Convergence Tolerance = 1.0e-12
+
+  ! equation is linear if no min/max
+  Nonlinear System Max Iterations = 15
+  Nonlinear System Convergence Tolerance  = 1.0e-08
+  Nonlinear System Relaxation Factor = 1.00
+!
+  Steady State Convergence Tolerance = 2.0
+!
+  Stabilization Method = Stabilized
+  Apply Dirichlet = Logical True
+
+  Compute dHdT = Logical True
+
+!!  the convection velocity (mean horizontal velocity)
+  Flow Solution Name = String "SSAVelocity"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 7
+  Equation = Reader7
+  Procedure = "GridDataReader" "GridDataReader"
+  Variable = -nooutput dumy7
+
+  Exec Interval = 10
+
+!---- NOTE: File is case sensitive, String is not!
+  Filename = File "<SMB_DATA>"
+
+  X Dim Name = String "x"
+  Y Dim Name = String "y"
+  Time Dim Name = String "year"
+
+  Variable 1 = File "smb_anomaly"
+  Target Variable 1 = String "smb_anomaly"
+  Exported Variable 1 = smb_anomaly
+
+ ! simulation time is converted in netcdf time index
+ ! i.e. if time=[0,1[ read time(1), etc...
+  Is Time Index = Logical True
+  Time Point = Variable Time
+    REAL MATC "floor(tx)+<ID>-1"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 8
+  Exec Solver = <EXEC_MISMIP_MELT>
+  Equation = Reader8
+  Procedure = "GridDataReader" "GridDataReader"
+  Variable = -nooutput dumy8
+
+!---- NOTE: File is case sensitive, String is not!
+  Filename = File "<TF>"
+
+  X Dim Name = String "x"
+  Y Dim Name = String "y"
+  Z Dim Name = String "z"
+  !Time Dim Name = String "time"
+
+  X Var Name = String "x"
+  Y Var Name = String "y"
+  Z Dim Name = String "z"
+  !Time Var Name = String "time"
+
+  !--- Interpolation variables
+  Epsilon X = Real 1.0e-2
+  Epsilon Y = Real 1.0e-2
+  Epsilon Z = Real 1.0e-2
+  !Epsilon Time = Real 0.01
+
+!--- 
+  Variable 1 = File "thermal_forcing"
+  Target Variable 1 = String "thermal_forcing"
+  Exported Variable 1 = thermal_forcing
+
+  !Is Time Counter = Logical True
+
+  Vertical Coordinate Given by zb = Logical True
+  External Var = String "zb"
+
+ ! simulation time is converted in netcdf time index
+ ! i.e. if time=[0,1[ read time(1), etc...
+  !Is Time Index = Logical True
+  !Time Point = Variable Time
+  !  REAL MATC "floor(tx)+<ID>-1"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 9
+  Exec Solver = <EXEC_MISMIP_MELT>
+  Equation = "MISMIP melt"
+  Variable = mismip_melt
+  Procedure = "LGGESolvers" "MISMIP_Melt_Param_ForIsmip6"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 10
+  !Exec Interval = $SCALARS_INTERVAL
+  Exec Solver = After Timestep
+
+  Equation = "Save Scalars"
+  Procedure = File "SaveData" "SaveScalars"
+
+  Filename = File "Scalars_"$name$".dat"
+  Parallel Reduce = logical True
+
+  Variable 1 = "Time"
+! area
+  Variable 2 = "H"
+  Operator 2 = "volume"
+! area grounded
+  Variable 3 = "groundedmask"
+  Operator 3 = "volume"
+ ! int H = Volume
+  Variable 4 = "H"
+  Operator 4 = "int"
+ ! int dh/dt = dVolume/dt
+  Variable 5 = "dhdt"
+  Operator 5 = "int"
+! int SMB
+  Variable 6 = "smb"
+  Operator 6 = "int"
+! PDC melt
+  Variable 7 = "<MELT_TYPE>"
+  Operator 7 = "int"
+! SMB_H=Artificial additionnal Mass flux due to limits on H
+  Variable 8 = "h residual"
+  Operator 8 = "sum"
+! OUT Flow
+  Variable 9 = "SSAVelocity"
+  Operator 9 = "convective flux"
+  Coefficient 9 = "Flux"
+!=> Dvolume/dt = SMB + SMB_H - OUT
+  Variable 10 = "dhdt"
+  Operator 10 = "max"
+  Operator 10 = "min"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Equation 1
+  Active Solvers(10) = 1 2 3 4 5 6 7 8 9 10
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Boundary Condition 1
+  Target Boundaries = 1
+
+  Calving Front = Logical True
+
+  Save Scalars = Logical True
+End
+
+Boundary Condition 2
+  Target Boundaries = 2
+
+  mass consistent normals = Logical True
+
+  Normal-Tangential SSAVelocity = Logical True
+  SSAVelocity 1 = Real 0.0
+
+  Save Scalars = logical True
+End
+

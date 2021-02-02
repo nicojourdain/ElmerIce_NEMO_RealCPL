@@ -1,0 +1,349 @@
+!! Name of the RUN 
+$name="<name>"
+!! Regularisation parameter
+$Lambda1=<lambda1>
+$Lambda2=<lambda2>
+$Lambda3=<lambda3>
+$Ga=<Ga>
+!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+$rhoi = <RHOI_SI>/(1.0e6*<YEARTOSEC>^2)
+$rhow = <RHOW_SI>/(1.0e6*<YEARTOSEC>^2)
+$gravity = <GRAVITY_SI>*<YEARTOSEC>^2
+$Lf = <LF_SI>*<YEARTOSEC>^2
+$cw = <CW_SI>*<YEARTOSEC>^2
+
+$Kt = <KT>
+
+$zsl = <ZSL>
+$n = <N>
+
+$parmlt = "<PARMLT>"
+$gamma0 = <GAMMA0>
+$glm = <GLM>
+$basinnb = <BASINNB>
+$time_init = <TIME_INIT>
+$epsz = <EPSZ>
+
+$meltfac = rhow*cw/(rhoi*Lf)
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Header
+  Mesh DB "." "mesh_<nbpart>"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Constants
+  sea level = Real $zsl
+  water density = Real $rhow
+  Friction weight = Real $Ga
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Simulation
+  Coordinate System  = Cartesian 
+  Simulation Type = Steady State
+
+  Steady State Min Iterations = 1
+  Steady State Max Iterations = 600
+
+  Post File = "OPTIM_$name$.vtu"
+  OutPut File = "OPTIM_$name$.result"
+  Output Intervals = 100
+
+  Restart File = "<nameINIT>.result"
+  Restart Before Initial Conditions = logical True
+  Restart Time = Real 0.0
+
+  Max Output Level = Integer 3 
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body 1
+  Initial Condition = 1
+  Equation = 1
+  Body Force = 1
+  Material = 1
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Initial Condition 1
+  Var 1 = Equals alpha
+  Var 2 = Real $sqrt(Ga)
+
+  DJDVar 1 = Real 0.0
+  DJDVar 2 = Real 0.0
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body Force 1
+  Flow BodyForce 1 = Real 0.0            
+  Flow BodyForce 2 = Real 0.0              
+  Flow BodyForce 3 = Real $gravity
+
+! For Cost DhDt
+  Top Surface Accumulation = Equals smb
+  Bottom Surface Accumulation = Equals PDC_melt
+
+  Observed dhdt = Real 0.0
+!
+  DJDVar 1 = Variable DJDBeta , Var 1, GroundedMask
+     REAL procedure "LGGEUSF" "Derivative_TenPowerA_Grounded"
+  DJDVar 2 = Variable DJDEta , Var 2 , Mu
+     REAL procedure "LGGEUSF" "Derivative_AsquareB"
+
+  DJDBReg Passive = Variable GroundedMask
+           Real procedure "LGGEUSF" "PassiveCond_DJDBReg"
+
+  Passive Element Min Nodes = Integer 1
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Material 1
+  Viscosity Exponent = Real $1.0e00/n
+  Critical Shear Rate = Real 1.0e-12
+
+  SSA Mean Density = Real $rhoi
+  SSA Mean Viscosity = Variable Var 2, Mu
+        REAL procedure "LGGEUSF" "AsquareB"
+  SSA Friction Law = String "linear"
+  SSA Friction Parameter = Variable Var 1, GroundedMask
+  	REAL procedure "LGGEUSF" "TenPowerA_Grounded"
+
+  !! For Save scalar to compute mass flux (=H*SSA_UV)
+   Flux = Equals H
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 1
+  Equation = "SSA"
+  Variable = -dofs 2 "SSAVelocity"
+
+  Procedure = "ElmerIceSolvers" "AdjointSSA_SSASolver"
+
+!! Mandatory for the adjoint 
+  Calculate Loads = Logical True
+
+  include "LINEAR_SOLVER.txt"
+
+  Nonlinear System Max Iterations = 50
+  Nonlinear System Convergence Tolerance  = 1.0e-10
+  Nonlinear System Newton After Iterations = 12
+  Nonlinear System Newton After Tolerance = 1.0e-05
+  Nonlinear System Relaxation Factor = 1.00
+
+  Steady State Convergence Tolerance = Real 1.0e-12
+
+  Exported Variable 1 = -nooutput CostValue
+  Exported Variable 2 = -nooutput DJDBeta
+  Exported Variable 3 = -nooutput DJDEta
+  Exported Variable 4 = -nooutput "Velocityb"
+  Exported Variable 4 DOFs = 2
+  !Exported Variable 5 = -nooutput "ssavelocity loads"
+  !Exported Variable 5 DOFs = 2
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!! Compute Cost function
+Solver 2
+  Equation = "Cost"
+  !!  Solver need to be associated => Define dumy variable
+    Variable = -nooutput "CostV"
+    Variable DOFs = 1
+
+    procedure = "ElmerIceSolvers" "AdjointSSA_CostDiscSolver"
+
+    Optimize Bandwidth = logical false
+
+   Problem Dimension = Integer 2 !2D mesh and 2D SSA Solution
+   Cost Variable Name = String "CostValue"  ! Name of Cost Variable
+   Lambda = Real 1.0
+ ! save the cost as a function of iterations (iterations,Cost,rms=sqrt(2*Cost/Ndata)
+   Cost Filename = File "Cost_$name$.dat"
+
+   Observed Variable Name = String "SSAVelocity"
+ ! ASCII File with data: x,y,u,v
+   !Observation File Name = File "$DATA_DIR$/VELOCITY/antarctica_ice_velocity_900m.txt"
+   Observation File Name = File "<VELOCITY_DATA>"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!! Compute Cost function DHDT
+Solver 3
+  Equation = "Cost_DHDT"
+  !!  Solver need to be associated => Define dumy variable
+    Variable = -nooutput "CostV"
+    Variable DOFs = 1
+
+   procedure = "ElmerIceSolvers" "AdjointSSA_CostFluxDivSolver"
+
+   Optimize Bandwidth = logical false
+
+   Reset Cost Value = Logical False
+
+   Problem Dimension = Integer 2 !2D mesh and 2D SSA Solution
+   Cost Variable Name = String "CostValue"  ! Name of Cost Variable
+   
+   Lambda= Real $Lambda3
+
+   Compute DJDZb = Logical False
+   Compute DJDZs = Logical False
+
+ ! save the cost as a function of iterations (iterations,Cost,rms=sqrt(2*Cost/Ndata)
+   Cost Filename = File "Cost_dHdt_$name$.dat"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!  Adjoint Solution
+Solver 4
+  Equation = "Adjoint"
+  Variable = -nooutput Adjoint
+  Variable Dofs = 2
+
+  procedure = "ElmerIceSolvers" "AdjointSSA_AdjointSolver"
+
+!Name of the flow solution solver
+  Flow Solution Equation Name = string "SSA"
+
+  include "LINEAR_SOLVER.txt"
+
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!  Compute Derivative of Cost function / Beta
+Solver 5
+  Equation = "DJDBeta"
+  !!  Solver need to be associated => Define dumy variable
+    Variable = -nooutput "DJDB"
+    Variable DOFs = 1
+
+    procedure = "ElmerIceSolvers" "AdjointSSA_GradientSolver"
+
+    Optimize Bandwidth = logical false
+
+    Flow Solution Name = String "SSAVelocity"
+    Adjoint Solution Name = String "Adjoint"
+    Compute DJDBeta = Logical True   ! Derivative with respect to the SSA Mean Viscosity
+    DJDBeta Name = string "DJDBeta"
+    Compute DJDEta = Logical True   ! Derivative with respect to the SSA Mean Viscosity
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 6
+  Equation = "UpdateExport"
+    Procedure = File "ElmerIceSolvers" "UpdateExport"
+  Variable = -nooutput "dumy"
+
+    Optimize Bandwidth = logical false
+
+!used here to update DJDalpha from DJeta (see correponding line in Body Force section)
+  Exported Variable 1 = -dofs 2 Var 
+  Exported Variable 2 = -dofs 2 DJDVar
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!  Compute Regularisation term
+Solver 7
+  Equation = "DJDBeta_Reg"
+  !!  Solver need to be associated => Define dumy variable
+    Variable = -nooutput "DJDBReg"
+    Variable DOFs = 1
+
+    procedure = "ElmerIceSolvers" "AdjointSSA_CostRegSolver"
+
+    Optimize Bandwidth = logical false
+
+    Problem Dimension=Integer 2
+    Cost Filename=File "CostReg_$name$.dat"
+    Optimized Variable Name= String "Var 1"
+    Gradient Variable Name= String "DJDVar 1"
+    Cost Variable Name= String "CostValue"
+    Lambda= Real $Lambda1
+    Reset Cost Value= Logical False  !=> DJDapha already initialized in solver DJDBeta; switch off initialisation to 0 at the beginning of this solver
+    A priori Regularisation= Logical False
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 8
+  Equation = "DJDEta_Reg"
+
+  !!  Solver need to be associated => Define dumy variable
+    Variable = -nooutput "DJDEtaReg"
+    Variable DOFs = 1
+
+    procedure = "ElmerIceSolvers" "AdjointSSA_CostRegSolver"
+
+    Optimize Bandwidth = logical false
+
+    Problem Dimension=Integer 2
+    Cost Filename=File "CostRegEta_$name$.dat"
+    Optimized Variable Name= String "Var 2"
+    Gradient Variable Name= String "DJDVar 2"
+    Cost Variable Name= String "CostValue"
+    Lambda= Real $Lambda2
+    Reset Cost Value= Logical False  !=> DJDapha already initialized in solver DJDBeta; switch off initialisation to 0 at the beginning of this solver
+    A priori Regularisation= Logical False
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!! Optimization procedure : Parallel only
+Solver 9
+  Equation = "Optimize_m1qn3"
+  !!  Solver need to be associated => Define dumy variable
+    Variable = -nooutput "UB"
+    Variable DOFs = 1
+
+  procedure = "LGGESolvers" "Optimize_m1qn3Parallel"
+
+  Cost Variable Name = String "CostValue"
+  Optimized Variable Name = String "Var"
+  Gradient Variable Name = String "DJDVar"
+  gradient Norm File = File "GradientNormAdjoint_$name$.dat"
+
+ ! M1QN3 Parameters
+  M1QN3 dxmin = Real 1.0e-10
+  M1QN3 epsg = Real  1.e-7
+  M1QN3 niter = Integer 600
+  M1QN3 nsim = Integer 600
+  M1QN3 impres = Integer 5
+  M1QN3 DIS Mode = Logical False
+  M1QN3 df1 = Real 0.5
+  M1QN3 normtype = String "dfn"
+  M1QN3 OutputFile = File  "M1QN3_$name$.out"
+  M1QN3 ndz = Integer 20
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!
+Solver 10
+     Exec Solver = After All
+
+     Equation = "Save Scalars"
+     Procedure = File "SaveData" "SaveScalars"
+
+     Filename = File "Scalars_OPTIM_$name$.dat"
+
+     Parallel Reduce = logical true
+
+! int H = Volume
+     Variable 1 = "H"
+     Operator 1 = "int"
+! area
+     Variable 2 = "H"
+     Operator 2 = "volume"
+! OUT Flow
+     Variable 3 = "SSAVelocity"
+     Operator 3 = "convective flux"
+     Coefficient 3 = "Flux"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Equation 1
+  Active Solvers(10) = 1 2 3 4 5 6 7 8 9 10
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Boundary Condition 1
+  Name = "Ice Front"
+  Target Boundaries = 1
+
+  Calving Front = logical true
+
+  Save Scalars = Logical True
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Boundary Condition 2
+  Name = "Sides"
+  Target Boundaries = 2
+
+  ssavelocity 1 = Equals uobs 1
+  ssavelocity 2 = Equals uobs 2
+
+  adjoint 1 = real 0.0
+  adjoint 2 = real 0.0
+
+  Save Scalars = Logical True
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!

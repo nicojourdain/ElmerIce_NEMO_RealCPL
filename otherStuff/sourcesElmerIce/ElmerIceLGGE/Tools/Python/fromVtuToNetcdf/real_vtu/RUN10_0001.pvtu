@@ -1,0 +1,50 @@
+<VTKFile type="PUnstructuredGrid" version="0.1" byte_order="LittleEndian">
+  <PUnstructuredGrid>
+    <PPointData Scalars="smb_anomaly" Vectors="ssavelocity">
+      <PDataArray type="Float64" Name="smb_anomaly" NumberOfComponents="1" format="appended"/>
+      <PDataArray type="Float64" Name="melt" NumberOfComponents="1" format="appended"/>
+      <PDataArray type="Float64" Name="groundedmask" NumberOfComponents="1" format="appended"/>
+      <PDataArray type="Float64" Name="effective pressure" NumberOfComponents="1" format="appended"/>
+      <PDataArray type="Float64" Name="h" NumberOfComponents="1" format="appended"/>
+      <PDataArray type="Float64" Name="h residual" NumberOfComponents="1" format="appended"/>
+      <PDataArray type="Float64" Name="dhdt" NumberOfComponents="1" format="appended"/>
+      <PDataArray type="Float64" Name="cwl" NumberOfComponents="1" format="appended"/>
+      <PDataArray type="Float64" Name="eta" NumberOfComponents="1" format="appended"/>
+      <PDataArray type="Float64" Name="smb" NumberOfComponents="1" format="appended"/>
+      <PDataArray type="Float64" Name="bedrock" NumberOfComponents="1" format="appended"/>
+      <PDataArray type="Float64" Name="zs" NumberOfComponents="1" format="appended"/>
+      <PDataArray type="Float64" Name="zb" NumberOfComponents="1" format="appended"/>
+      <PDataArray type="Float64" Name="ssavelocity" NumberOfComponents="3" format="appended"/>
+    </PPointData>
+    <PCellData>
+      <PDataArray type="Int32" Name="GeometryIds" format="appended"/>
+    </PCellData>
+    <PPoints>
+      <DataArray type="Float64" NumberOfComponents="3" format="appended"/>
+    </PPoints>
+    <Piece Source="RUN10_0001par0001.vtu"/>
+    <Piece Source="RUN10_0002par0001.vtu"/>
+    <Piece Source="RUN10_0003par0001.vtu"/>
+    <Piece Source="RUN10_0004par0001.vtu"/>
+    <Piece Source="RUN10_0005par0001.vtu"/>
+    <Piece Source="RUN10_0006par0001.vtu"/>
+    <Piece Source="RUN10_0007par0001.vtu"/>
+    <Piece Source="RUN10_0008par0001.vtu"/>
+    <Piece Source="RUN10_0009par0001.vtu"/>
+    <Piece Source="RUN10_0010par0001.vtu"/>
+    <Piece Source="RUN10_0011par0001.vtu"/>
+    <Piece Source="RUN10_0012par0001.vtu"/>
+    <Piece Source="RUN10_0013par0001.vtu"/>
+    <Piece Source="RUN10_0014par0001.vtu"/>
+    <Piece Source="RUN10_0015par0001.vtu"/>
+    <Piece Source="RUN10_0016par0001.vtu"/>
+    <Piece Source="RUN10_0017par0001.vtu"/>
+    <Piece Source="RUN10_0018par0001.vtu"/>
+    <Piece Source="RUN10_0019par0001.vtu"/>
+    <Piece Source="RUN10_0020par0001.vtu"/>
+    <Piece Source="RUN10_0021par0001.vtu"/>
+    <Piece Source="RUN10_0022par0001.vtu"/>
+    <Piece Source="RUN10_0023par0001.vtu"/>
+    <Piece Source="RUN10_0024par0001.vtu"/>
+  </PUnstructuredGrid>
+</VTKFile>

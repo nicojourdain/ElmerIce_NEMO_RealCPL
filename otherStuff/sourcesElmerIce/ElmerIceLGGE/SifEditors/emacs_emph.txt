@@ -1,0 +1,14 @@
+(require 'generic-x) ;; we need this
+(define-generic-mode
+  'sif-mode                                                             ;; name of the mode to create
+  '("!" "#")                                                            ;; comments start with '!' or "#'
+  '("Header" "Constants" "Material" "End" "Boundary Condition"
+    "Simulation" "Body" "Body Force" "Initial Condition" "Equation")    ;; some keywords
+  '(("=" . 'font-lock-operator)                                         ;; This doesn't do anything!   
+    ("Solver [0-9]+" . 'font-lock-keyword-face)                         ;; Highlights Solver sections 
+    ("$$" . 'font-lock-builtin)                                         ;; or this!
+    ("Real" "Logical" "String" "Integer" . 'font-lock-type-face)        ;; or this
+    ("\\(\$[a-zA-Z]+\\)" . 'font-lock-function-name-face))
+  '("\\.sif$")                                                          ;; files for which to activate this mode
+  "A mode for sif files"                                                ;; doc string for this mode
+  )

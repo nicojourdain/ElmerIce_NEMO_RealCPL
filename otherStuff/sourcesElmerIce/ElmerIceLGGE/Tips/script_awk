@@ -1,0 +1,7 @@
+awk '{printf "%+8.8e  %+8.8e  %+8.8e  %+8.8e  %+8.8e  %+8.8e\n", $17/1000., $18/1000., $19, $5, $6, $7}' surface_F000_New50km.dat > oga1f000.txt0 
+awk '{if (sqrt($18*$18)< 0.1) printf "%+8.8e  %+8.8e  %+8.8e  %+8.8e  %+8.8e\n", $17/1000., $19, $5, $6, $7}' surface_F000_New50km.dat > oga1f000_y0.txt0 
+sort +0g +1g oga1f000.txt0 > oga1f000.txt1 
+uniq  oga1f000.txt1 > oga1f000.txt 
+sort -g oga1f000_y0.txt0 > oga1f000_y0.txt1 
+uniq  oga1f000_y0.txt1 > oga1f000_y0.txt 
+rm -f *.txt0 *.txt1 

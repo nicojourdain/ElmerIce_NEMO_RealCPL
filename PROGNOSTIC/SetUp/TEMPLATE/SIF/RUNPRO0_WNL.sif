@@ -1,0 +1,117 @@
+!! Name of the RUNPRO 
+$name="RUNPRO0_"
+!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+$rhoi = <RHOI_SI>/(1.0e6*<YEARTOSEC>^2)
+$rhow = <RHOW_SI>/(1.0e6*<YEARTOSEC>^2)
+$gravity = <GRAVITY_SI>*<YEARTOSEC>^2
+$Lf = <LF_SI>*<YEARTOSEC>^2
+$cw = <CW_SI>*<YEARTOSEC>^2
+
+$Kt = <KT>
+
+$zsl = <ZSL>
+$n = <N>
+
+$parmlt = "<MISMIP_MELT_TYPE>"
+$gamma0 = <GAMMA0>
+$glm = <GLM>
+$basinnb = <BASINNB>
+$time_init = <TIME_INIT>
+$epsz = <EPSZ>
+
+$meltfac = rhow * cw / ( rhoi * Lf )
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Header
+  Mesh DB "." "mesh_<nbpart>"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Constants
+  sea level = Real $zsl
+  water density = Real $rhow
+  Ice density = Real $rhoi
+
+  Sea Water Specific heat = Real $cw
+  Ice fusion latent heat = Real $Lf
+  Transfer Factor = Real $Kt
+
+  ! For MISMIP_Melt Solver
+  Melt factor = Real $meltfac
+  Minimum thickness to Melt = Real $epsz
+  gamma0 = Real $gamma0
+  basinnb = Integer $basinnb
+
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Simulation
+  Coordinate System  = Cartesian 2D 
+  Simulation Type = Transient
+
+  Timestepping Method = "bdf"
+  BDF Order = 2
+  Output Intervals(1) = 1 !10
+  Timestep Intervals(1) = 1 !50
+  Timestep Sizes(1) = 0.0
+
+  Output Intervals = 1
+
+  Steady State Min Iterations = 1
+  Steady State Max Iterations = 1
+
+  Post File = "$name$.vtu"
+  OutPut File = "$name$.result"
+
+  Restart File = "RUN0_.result"
+  Restart Position = 0
+
+  Max Output Level = 3
+
+  ! Melt
+  Experiment initial time = Real $time_init
+  ! Melt Parameterization, possible values = lin, quad, plus
+  Melt Parameterization = String $parmlt
+  Grounding Line Melt = Logical $glm
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body 1
+  Equation = 1
+  Body Force = 1
+  Material = 1
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body Force 1
+  ! weertman non linear friction law 
+  alpha3 = Variable SSAVelocity 1, SSAVelocity 2
+    Real procedure "LGGEUSF" "Alpha_3"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Material 1
+  ! slip coeff for the SSA
+  SSA Friction Law = String "linear"
+  SSA Friction Parameter = Equals cwl
+  !SSA Friction Parameter = Variable cwl
+  !  Real procedure "LGGEUSF" "TenPowerA"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 1
+  Equation = "upd1"
+  Variable = -nooutput dummy1
+  Procedure = "ElmerIceSolvers" "UpdateExport"
+
+  Exported Variable 1 = Alpha3
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Equation 1
+  Active Solvers(1) = 1
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Boundary Condition 1
+  Target Boundaries = 1
+  Calving Front = Logical True
+End
+
+Boundary Condition 2
+  Target Boundaries = 2
+End
+

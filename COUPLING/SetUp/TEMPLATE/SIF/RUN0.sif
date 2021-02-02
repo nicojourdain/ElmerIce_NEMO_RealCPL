@@ -1,0 +1,184 @@
+!! Name of the RUN 
+$name = "RUN0_"
+!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+$rhoi = <RHOI_SI>/(1.0e6*<YEARTOSEC>^2)
+$rhow = <RHOW_SI>/(1.0e6*<YEARTOSEC>^2)
+$gravity = <GRAVITY_SI>*<YEARTOSEC>^2
+
+$zsl = <ZSL>
+$n = <N>
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Header
+  Mesh DB "." "mesh_<nbpart>"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Constants
+  sea level = Real $zsl
+  water density = Real $rhow
+  Ice density = Real $rhoi
+  Gravity = Real $gravity
+
+  HMin Critical Thickness = Real 1.0
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Simulation
+  Coordinate System  = Cartesian 2D 
+  Simulation Type = Steady State
+
+  Output Intervals = 1
+
+  Steady State Max Iterations = 1
+  Steady State Min Iterations = 1
+
+  Output File = "$name$.result"
+  Post File = "$name$.vtu"
+
+  max output level = 10
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+  Initial Condition = 1
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Initial Condition 1
+!! List of variable that must be initialised
+  h = Real 0.0
+  bedrock = Real 0.0
+  zs = Real 0.0
+  zb = Real 0.0
+  smb = Real 0.0
+  eta = Real 0.0
+  cwl = Real 0.0
+  melt = Real 0.0
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body Force 1
+  h = Variable h
+    Real procedure "LGGEUSF" "HMin"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Material 1
+  SSA Mean Density = Real $rhoi
+
+  Min Zs Bottom = Equals bedrock
+  Max Zs Bottom = Real 1.0e6
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 1
+  Equation = "Reader1"
+  Procedure = "GridDataReader" "GridDataReader"
+  Filename = File "<THICKNESS_DATA>"
+
+  X Dim Name = String "x"
+  Y Dim Name = String "y"
+
+  X Var Name = String "x"
+  Y Var Name = String "y"
+
+  Variable 1 = File "<nameThicknessVar>"
+  Target Variable 1 = String "h"
+
+  Variable 2 = File "<nameBedVar>"
+  Target Variable 2 = String "bedrock"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 2
+  Equation = "ScatteredInter2"
+  Variable = -nooutput "dumy"
+
+  procedure = "Scattered2DDataInterpolator" "Scattered2DDataInterpolator"
+
+  Bounding Box dx = Real 20000.0
+
+  Variable 1 = File cwl
+  Variable 1 data file = File "<CWL_DATA>"
+  Variable 1 method = String "li"
+
+  Exported Variable 1 = cwl
+
+  Variable 2 = File eta
+  Variable 2 data file = File "<ETA_DATA>"
+  Variable 2 method = String "li"
+
+  Exported Variable 2 = eta
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 3
+  Equation = "Reader3"
+  Procedure = "GridDataReader" "GridDataReader"
+  Variable = -nooutput "dumy"
+
+  !---- NOTE: File is case sensitive, String is not!
+  Filename = File "<SMB_CLIM_DATA>"
+
+  X Dim Name = String "x"
+  Y Dim Name = String "y"
+
+  Variable 1 = File "smb_clim"
+  Target Variable 1 = String "smb"
+  Exported Variable 1 = smb
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 4
+  Equation = "UpD4"
+  Variable = -nooutput "dumy"
+    Procedure = "ElmerIceSolvers" "UpdateExport"
+  
+  Exported Variable 1 = h
+  Exported Variable 2 = bedrock
+  !Exported Variable 3 = zs
+  !Exported Variable 4 = zb
+  Exported Variable 3 = melt
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 5
+  Equation = "Flotation"
+  Variable = GroundedMask
+    Procedure = "ElmerIceSolvers" "Flotation"
+
+  Exported Variable 1 = zs
+  Exported Variable 2 = zb
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 6
+     Equation = "Save Scalars"
+     Procedure = File "SaveData" "SaveScalars"
+
+     Filename = File "Scalars_$name$.dat"
+
+     Parallel Reduce = logical True
+
+! int H = Volume
+     Variable 1 = "H"
+     Operator 1 = "int"
+! area
+     Variable 2 = "H"
+     Operator 2 = "volume"
+! area grounded
+     Variable 3 = "groundedmask"
+     Operator 3 = "volume"
+!     Coefficient 3 = "GroundedAreaCoeff"
+! SMB
+     Variable 4 = "smb"
+     Operator 4 = "int"
+! BMB
+     !Variable 5 = "PDC_melt"
+     Variable 5 = "melt"
+     Operator 5 = "int"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Equation 1
+  Active Solvers (5)= 1 2 3 4 5
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Boundary Condition 1
+  Name = "Ice Front"
+  Target Boundaries = 1
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+

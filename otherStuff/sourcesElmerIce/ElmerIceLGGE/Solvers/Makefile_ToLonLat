@@ -1,0 +1,6 @@
+PROJ_INC=/scratch/cnt0021/gge6066/SHARED/local/include
+PROJ_LIB=/scratch/cnt0021/gge6066/SHARED/local/lib
+ElmerIceLGGE=/home/lfavier/models/ElmerIceLGGE
+
+ToLonLat: $(ElmerIceLGGE)/Solvers/ToLonLat.F90
+	elmerf90 -I${PROJ_INC} $^ -o $@  -L${PROJ_LIB} -lproj -lfortranc -lfortrangis

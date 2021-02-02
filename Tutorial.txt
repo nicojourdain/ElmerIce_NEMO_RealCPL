@@ -1,0 +1,243 @@
+###########################################################################
+# Environment to run the Elmer/Ice - NEMO coupled model for realistic configurations
+#
+# History and contributors:
+#    - Beta version for idealized MISOMIP configuration https://doi.org/10.5281/zenodo.2562837 (N. Merino, IGE, 2017)
+#    - Initial version for realistic configurations (L. Favier, IGE, 2018-2019)
+#
+###########################################################################
+WORKDIR=`pwd`
+
+
+###########################################################################
+# 1- Get modelling infrastructure :
+###########################################################################
+git clone https://github.com/nicojourdain/ElmerIce_NEMO_RealCPL.git
+cd ElmerIce_NEMO_RealCPL
+
+# If yoou want to have auto-completion for createRun.sh commands,
+vi ${WORKDIR}/ElmerIce_NEMO_RealCPL/otherStuff/completion/completion.sh  # edit path
+# TO do only once if not done before:
+echo " " >> ~/.bashrc
+echo "# Auto-completion for ElmerIce_NEMO's createRun.sh:" >> ~/.bashrc
+echo "source ${WORKDIR}/ElmerIce_NEMO_RealCPL/otherStuff/completion/completion.sh" >> ~/.bashrc
+
+###########################################################################
+# 2- Get all required datasets :
+###########################################################################
+cd DATA_SETS
+cp -rp /store/njourd/ElmerIce_Real_DATA_SETS/*  .
+mkdir NEMO
+mkdir NEMO/input
+cd NEMO/input
+ln -s -v /scratch/shared/egige60/FORCING_SETS
+ln -s -v /scratch/shared/egige60/input/nemo_AMUXL025
+
+###########################################################################
+# 3- Compile Elmer/Ice :
+###########################################################################
+# Assuming that Elmer/Ice was compiled previously (Mondher, Fabien):
+# you can execute the following or add it to you .bashrc or .bash_profile.
+# Here for version: 8.4 (Rev: 9f6699b, Compiled: 2019-03-07)
+# NB: if not in .bashrc or .bash_profile, you need to do this each time.
+export ELMER_FEM_REVISION=9f6699b
+export ELMER_HOME=${SHAREDSCRATCHDIR}/local/elmer_${ELMER_FEM_REVISION}
+source ${SHAREDSCRATCHDIR}/local/env/elmervars.sh
+# Now we use the routines copied on the github repository.
+# NB: this should be replaced with renater git sources (but a few of them not yet on github):
+cd ${WORKDIR}/ElmerIce_NEMO_RealCPL/otherStuff/sourcesElmerIce/ElmerIceLGGE
+# Adapt Makefile (check PROJ_INC and PROJ_LIB used to compile ElmerIce), then:
+make clean
+make
+make install  # this should create LGGESolvers.so and LGGEUSF.so
+
+###########################################################################
+# 4- Inversion
+#    (see ch.6 of Julien Brondex's PhD thesis)
+#    NB: Inversion done for linear Weertman Law (no other solution available in Elmer)
+###########################################################################
+
+#-----------------------------------------------------------------
+# 4a- TO DO THE ENTIRE INVERSION:
+#     (go to 4b directly if you start from an existing inversion)
+#
+#
+cd $WORKDIR/ElmerIce_NEMO_RealCPL/INVERSION/SetUp  # check sif files in TEMPLATE/SIF
+vi createRun.sh # edit, in particular BASE_DIR and ELMER_HOME
+#
+cd $WORKDIR/ElmerIce_NEMO_RealCPL/PARAMETERS
+# create a parameter file (get inspiration from most recent provided examples), e.g. 
+export CASE='TEST01'
+cp -p INV01_MouginotvSep2018.IN INV01_${CASE}
+# This is where you can set the datasets that you want tu use for inversion).
+wc -l ../INVERSION/SetUp/INPUT/LREG_SansDHDt_Ga100.IN # this file contains pre-defined regularisation parameters (see J. Brondex's PhD, ch. 6.2).
+vi INV01_${CASE}.IN # select rkcmin=1 and rkcmax = the nb of lines indicated by the previous wc command; put rkdhdtmin=0 and rkdhdtmax=0
+# To initialize inversion:
+cd $WORKDIR/ElmerIce_NEMO_RealCPL/INVERSION/SetUp
+./createRun.sh INV01_${CASE}.IN # NB: don't worry, "ABORT" is normal. 
+# -> launches INIT_INVERSION, which should create Elmer outputs (vtu) (initialized 2d fields), that can be seen here:
+ls -al RUNS_INV01_${CASE}/run_INIT_OPTIM/mesh_24
+# Then, to calculate the inversion for the selected friction (more precisely: log10(drag coeff)) and viscosity (more precisely gamma: depending on the square root of viscosity) parameters :
+vi ../../PARAMETERS/INV01_${CASE}.IN # set rkdhdtmin=0 and rkdhdtmax=0 (we do not account for dh/dt for the moment)
+./createRun.sh INV01_${CASE}.IN
+# This launches as many INVERSION jobs as selected rkcmax values and creates several directories with outputs, 
+# e.g. RUNS_INV01_${CASE}/run_OPTIM_Ga100_Rcg1_Rdhdt0 ..... RUNS_INV01_${CASE}/run_OPTIM_Ga100_Rcg20_Rdhdt0
+# To choose which set of parameters to use:
+cd RUNS_INV01_${CASE}
+cp -p ../TEMPLATE/TOOLS/makeLcurveIn3D.py .  # A mettre dans createRun.sh idéalement.
+module load python
+python makeLcurveIn3D.py # this should display a figure.
+# choose the point in the concavity (at the limit between flat and steep in the 2 dimensions, see Julien Brondex's PhD thesis ch. 6.2), 
+# the number corresponds to the line in INVERSION/SetUp/INPUT/LREG_SansDHDt_Ga100.IN
+# Then do inversion for DH/Dt:
+wc -l $WORKDIR/ElmerIce_NEMO_RealCPL/INVERSION/SetUp/INPUT/LREG_AvecDHDt_Ga100.IN  # this file contains pre-defined regularisation parameters (see J. Brondex's PhD, ch. 6.2).
+cd $WORKDIR/ElmerIce_NEMO_RealCPL/PARAMETERS
+vi INV01_${CASE}.IN # select rkcmin=rkcmax=3 (or the value you selected based on makeLcurveIn3D.py) and rkdhdtmin=1 and rkdhdtmax=40 (or nb of lines given by previous wc command).
+cd $WORKDIR/ElmerIce_NEMO_RealCPL/INVERSION/SetUp/
+./createRun.sh INV01_${CASE}.IN
+#
+cd $WORKDIR/ElmerIce_NEMO_RealCPL/INVERSION/SetUp/RUNS_INV01_${CASE}
+cp -p ../TEMPLATE/TOOLS/makeLcurveForDhdt.py .  # A mettre dans createRun.sh idéalement.
+python makeLcurveForDhdt.py # choose the point in the concavity (at the limit between flat and steep (see Julien Brondex's PhD thesis ch. 6.2)
+#
+cp -p ../TEMPLATE/TOOLS/cleanAndCopyResults.sh .  # A mettre dans createRun.sh idéalement.
+vi cleanAndCopyResults.sh  # select good1 and good2 values (to keep), and change nb of partitions if it does not correspond to the file...
+./cleanAndCopyResults.sh  # moves the inversions to keep in INVERSION/Results
+
+#-----------------------------------------------------------------
+# 4b- ALTERNATIVE: STARTING FROM AN EXISTING INVERSION:
+#     (assuming that the same formalism as above was used to create that previous inversion)
+#
+# copy previous inversion, e.g.:
+cp -rp xxxxx/RUNS_INV01_${CASE} ${WORKDIR}/ElmerIce_NEMO_RealCPL/INVERSION/Results/.
+
+# Check pathways for next steps:
+cd ${WORKDIR}/ElmerIce_NEMO_RealCPL/COUPLING/SetUp
+vi createRun.sh # check ELMER_PATH_INVERSE, e.g. ELMER_PATH_INVERSE=$BASE_DIR/INVERSION/Results
+
+# NB1: If inversion was done under a different framework than Lionel's tools, you need to mimmic the syntax of run_OPTIM_Ga100_Rcg3_Rdhdt6/mesh_24 etc according to parameters in, e.g., PARAMETERS/INV01_${CASE}.IN
+# Then, in COUPLING/SetUp/createRun.sh, fill:
+# ELMER_PATH_INVERSE=$BASE_DIR/INVERSION/Results
+# Then, you will select which case by putting the correct argument for ./createRun.sh
+
+# NB2: The regularization parameters are:
+# /scratch/shared/egige60/ElmerIce_NEMO_RealCPL/INVERSION/SetUp/INPUT/LREG_SansDHDt_Ga100.IN (friction et viscosité)
+# /scratch/shared/egige60/ElmerIce_NEMO_RealCPL/INVERSION/SetUp/INPUT/LREG_AvecDHDt_Ga100.IN (divergence du flux, une fois que friction et viscosité effectué)
+
+###########################################################################
+# 5- Relaxation Elmer/Ice only (parameterized oceanic melt).
+#    Needed to change the friction law because the inversion is done for a
+#    linear Weertman law, and it is better to use non-linear Weertman or
+#    Schoof. Otherwise, skip this step (and keep linear Weertman law, which 
+#    is not recommended).
+#    Typically, 15 years with linear Weertman, then 5 years of non-linear
+#    (see Brondex's paper or PhD thesis ch. 6)
+###########################################################################
+
+cd $WORKDIR/ElmerIce_NEMO_RealCPL/PROGNOSTIC/SetUp/TEMPLATE/SLURM # check modules loaded in all the slurm files (nj: should be improved using an ARCH directory)
+cd $WORKDIR/ElmerIce_NEMO_RealCPL/PROGNOSTIC/SetUp 
+vi ../../PARAMETERS/INV01_smbMAR.IN # set values of rkcg and rkdhdt in the "RELAXATION" section.
+vi createRun.sh # adapt all pathways (BASE_DIR, ELMER_HOME, etc)
+vi createRun.sh # set stageblock = 0
+./createRun.sh INV01_${CASE}.IN  # -> launches ImportResultsInversion then RUN0.
+# You can check that everything went fine in $WORKDIR/ElmerIce_NEMO_RealCPL/PROGNOSTIC/SetUp/RUNS_INV01_${CASE}/RELAXATION/RUN0.xxxxxxxx.output 
+# and there should be RUN0*.vtu files in $WORKDIR/ElmerIce_NEMO_RealCPL/PROGNOSTIC/SetUp/RUNS_INV01_${CASE}/RELAXATION/mesh_24
+vi createRun.sh # set stageblock = 1
+./createRun.sh INV01_${CASE}.IN  # -> launches RUN1 (relaxation with linear Weertman). Linear friction coefficient (cwl) imported from inversion (see RUNii.sif)
+# check outputs (RUN1*.vtu) in $WORKDIR/ElmerIce_NEMO_RealCPL/PROGNOSTIC/SetUp/RUNS_INV01_${CASE}/RELAXATION/mesh_24
+# check diags in $WORKDIR/ElmerIce_NEMO_RealCPL/PROGNOSTIC/SetUp/RUNS_INV01_${CASE}/RELAXATION/RUN1.xxxxxxxx.output 
+
+# then follow *either* 5a or 5b depending on whether you use Weertman non-linear or Schoof non-linear.
+
+#---------------------------------------------------------------
+## 5a- to relax from linear to non-linear Weertman friction law:
+cd $WORKDIR/ElmerIce_NEMO_RealCPL/PROGNOSTIC/SetUp
+vi createRun.sh # set stageblock = 2
+./createRun.sh INV01_${CASE}.IN  # -> launches (relaxation with non-linear Weertman). Check "Alpha_3" in RUNPRO0_WNL.sif for transformation from linear to non-linear (made by Elmer User Function Alpha_3.F90), then alpha3 in RUNPROii_WNL.sif.
+# check outputs in PROGNOSTIC_WNL/SetUp/RUNS_INV01_${CASE}/PROGNOSTIC/mesh_24
+
+#---------------------------------------------------------------
+## 5b- to relax from linear to non-linear Schoof law:
+cd $WORKDIR/ElmerIce_NEMO_RealCPL/PROGNOSTIC/SetUp
+vi createRun.sh # set stageblock = 3
+./createRun.sh INV01_${CASE}.IN
+# This launches RUNS_INV01_${CASE}/PROGNOSTIC_SCHOOF/Calcul_Cs_LoiSchoof.slurm which first determinates
+# Schoof friction coefficients (see Brondex Phd, section 6.3.2) through RUNS_INV01_${CASE}/PROGNOSTIC_SCHOOF/Calcul_Cs_LoiSchoof.py
+# with values are stored in RUNS_INV01_${CASE}/PROGNOSTIC_SCHOOF/csSchoof_Ga100_Rcgxxx_Rdhdtxxx.dat
+# then launches 
+
+# A compléter pour repartir en couplé.... (adapt SIF for non-linear + ISF_DRAFT INITIAUX, etc)
+
+###########################################################################
+# 6a- Define the COUPLING framework:
+#     "0st block : Preliminary stuff" in COUPLING/createRUN.sh
+###########################################################################
+cd $WORKDIR/ElmerIce_NEMO_RealCPL/COUPLING/SetUp
+vi createRun.sh # edit, in particular BASE_DIR, stageblock=0, ELMER_HOME (directory for CSC sources) and ELMERICELGGElibs (ElmerIce LGGE from Renater + personal sources)
+                # NEMO_RELAX1_NBYEARS, MONTHS_TO_SAVE_RELAX1, NEMO_RELAX2_NBYEARS, MONTHS_TO_SAVE_RELAX2
+# NB: the inversion available in /INVERSION/Results/RUNS_INV01_${CASE} needs to match with the parameters selected in PARAMETERS/INV01_${CASE}.IN (rkcg and rkdhdt values for "RELAXATION" section). 
+./createRun.sh INV01_${CASE}.IN # where "INV01_${CASE}" is the so-called FAMILY
+# -> this creates the entire structure for this coupled run, and submit a few job (ImportResultsInversion,ELMER_CPL_RUN0, then makeElmerMaskInNemo).
+# -> creates: RELAXATION/ELMERICE/Cwl_OPTIM_Gaxxx_Rcgxx_Rdhdtxx.dat  # created by ImportResultsInversion
+#             RELAXATION/ELMERICE/Eta_OPTIM_Gaxxx_Rcgxx_Rdhdtxx.dat  # created by ImportResultsInversion
+#             RELAXATION/ELMERICE/Scalars_RUN0_.dat                  # created by ELMER_CPL_RUN0
+#             RELAXATION/ELMERICE/mesh_24/*.vtu                      # created by ELMER_CPL_RUN0
+#             EXCHANGE/elmer_mask_in_nemo.txt                        # created by makeElmerMaskInNemo 
+
+###########################################################################
+# 6b- Run NEMO's 1st relaxation, i.e. spin-up with initial dataset geometry.
+#     "1st block : NEMOrel1" in COUPLING/createRUN.sh
+###########################################################################
+cd $WORKDIR/ElmerIce_NEMO_RealCPL/COUPLING/SetUp
+# NB: all nemo run scripts and parameter files in $WORKDIR/ElmerIce_NEMO_RealCPL/COUPLING/SetUp/TEMPLATE/NEMO
+vi createRun.sh # edit stageblock=1
+./createRun.sh INV01_${CASE}.IN # where "INV01_${CASE}" is the so-called FAMILY
+# Check runs in RUNS_INV01_${CASE}/RELAXATION/NEMO_rel1/nemo_AMUXL025_GNJ002_BM01mv
+# Once all relaxation period covered, check that:
+# -> RUNS_INV01_${CASE}/RELAXATION/NEMO_rel1/nemo_AMUXL025_GNJ002_BM01mv/output_sbc contains one file per month (will take the xx last months to build exchanged melt average).
+# -> creates RUNS_INV01_${CASE}/EXCHANGE/MELT_RATES/melt_rates_nemo_xy (ASCII) = melt rate that will be read by Elmer/Ice.
+
+###########################################################################
+# 6c- Run Elmer's 1st relaxation, with NEMOrel1's melt rates
+#     "2nd block : ELMERICErel" in COUPLING/createRUN.sh
+###########################################################################
+cd $WORKDIR/ElmerIce_NEMO_RealCPL/COUPLING/SetUp
+vi createRun.sh # edit stageblock=2
+./createRun.sh INV01_${CASE}.IN
+# This submits jobs ELMER_CPL_RUN1_rel, then ELMER_CPL_RUN2_rel, ELMER_CPL_RUN3_rel...
+# and creates outputs in RUNS_INV01_${CASE}/RELAXATION/ELMERICE/
+
+###########################################################################
+# 6d- Run NEMO's 2nd relaxation, i.e. spin-up with ElmerICErel's geometry.
+#     "3rd block : NEMOrel2" in COUPLING/createRUN.sh
+###########################################################################
+cd $WORKDIR/ElmerIce_NEMO_RealCPL/COUPLING/SetUp
+vi createRun.sh # edit stageblock=3
+./createRun.sh INV01_${CASE}.IN
+# Check runs in RUNS_INV01_${CASE}/RELAXATION/NEMO_rel2/nemo_AMUXL025_GNJ002_BM01mv
+# This creates EXCHANGE/melt_rates_nemo_xy that points to melt_rates_nemo_xy_rel2
+ 
+###########################################################################
+# 6e- Couplage !
+#     "4th block : NEMO-ELMERICE pro"    
+###########################################################################
+cd $WORKDIR/ElmerIce_NEMO_RealCPL/COUPLING/SetUp
+vi createRun.sh # edit stageblock=4, check also run duration (COUPLING_NBYEARS)
+./createRun.sh INV01_${CASE}.IN
+# This will launch ELMER_CPL_RUN1_pro, then NEMO_CPL_RUN_pro, and on and on....
+# Check Elmer outputs in RUNS_INV01_${CASE}/PROGNOSTIC/ELMERICE
+# and NEMO outputs in RUNS_INV01_${CASE}/PROGNOSTIC/nemo_AMUXL025_GNJ002_BM01mv 
+# and exchanged files in RUNS_INV01_${CASE}/EXCHANGE/ISF_DRAFT and RUNS_INV01_${CASE}/EXCHANGE/MELT_RATES
+#
+# NB: to restart the full prognostic coupled run: 
+rm -rf PROGNOSTIC
+rm -f EXCHANGE/ISF_DRAFT/isf_draft_meter_pro?.nc
+rm -f EXCHANGE/MELT_RATES/*_pro.nc
+rm -f EXCHANGE/MELT_RATES/melt_rates_nemo_xy_pro?
+./createRun.sh INV01_${CASE}.IN
+
+
+###########################################################################
+# 7- Post-process Elmer's outputs
+###########################################################################
+ See python scripts in $WORKDIR/ElmerIce_NEMO_RealCPL/otherStuff/postprocess_Elmer/

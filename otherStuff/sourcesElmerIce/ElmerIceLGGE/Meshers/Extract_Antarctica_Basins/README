@@ -1,0 +1,19 @@
+Extract Antarctica Basins:
+--------------------------
+Link: http://icesat4.gsfc.nasa.gov/cryo_data/ant_grn_drainage_systems.php [Last access on July 2014]
+
+For each basin, you can download 2 txt files:
+	-  sea-side [basinX_cote.txt]
+	-  land-side [basinX_terre.txt]
+
+			--------------------------
+
+Basin_shp.tar contains shapefile for each basin
+
+			--------------------------
+
+script_merge_check-data.tar contains 2 scripts:
+	- bash script to merge 2 basins
+	- matlab script to chek contour of the basin.
+
+

@@ -1,0 +1,124 @@
+# Configuration file
+#
+# Physical parameters
+# Mesh
+# Inversion
+# Relaxation
+# Prognostic
+# Coupling ...
+#
+
+# need to be similar to BASE_DIR in Makefile.sh
+BASE_DIR=<BASE_DIR>
+
+#################### Physical parameters #########################
+
+# whatever is in Elmer units is calculated from sif files
+# in SI units
+rhoi_SI=910.0
+rhow_SI=1028.0
+gravity_SI=-9.81
+lf_SI=0.335e06
+cw_SI=4218.0
+
+#not in SI units
+kt=15.77
+
+# From year to seconds (standardized based on the radiation wavelength of caesium-133...)
+yeartosec=31556952.0
+#sea level
+zsl=0.0
+# glen's exponent
+n=3.0
+
+## sub-shelf melting params
+# type of param
+parmlt=plus
+# initial calibration to match integrated melt beneath ice shelf
+gamma0=14477.0
+# melt or not at the grounding line
+glm=0
+#number of basins
+basinnb=16
+# initial time
+time_init=0.0
+# No melt layer thickness beneath sea level
+epsz=10.0
+
+#################### MESH #########################
+
+ELMER_CONTOUR_FILE=$BASE_DIR/CONTOUR/AmundsenBasin_FG_NODES.dat
+
+#mesh=/scratch/cnt0021/gge6066/lfavier/ElmerIce_Real/MESH_OPTIMISATION/PIGTHW_Brondex_coarse/DISTINV5000.0_M1ERR2.0_M2ERR10.0_M3ERR1.0e-6/output_N10
+mesh=/scratch/cnt0021/gge6066/lfavier/ElmerIce_Real/INVERSION/SetUp/MESH/MESH_UH_GL_9_N10
+nbpart=24
+
+#################### INVERSION ####################
+
+Ga=100.0 #weight on viscosity
+
+rkcmin=1 #first line for lambda1 & lambda2 (alpha & gamma)
+rkcmax=20 #last line
+#for lambda3 (dhdt) - setup both to 0 if you don't want flux divergence regularisation
+rkdhdtmin=0 #first line for lambda3 (dhdt)
+rkdhdtmax=0 #last line
+
+#to distinguish Ga (100.0) from Gastr (100)
+Gastr=`echo $Ga | cut -d"." -f1`
+
+#LREG_SansDHDt_Ga100.IN
+nameLregSans=LREG_SansDHDt_Ga${Gastr}.IN
+#LREG_AvecDHDt_Ga100.IN
+nameLregAvec=LREG_AvecDHDt_Ga${Gastr}.IN
+
+#################### RELAXATION ###################
+
+rkcg=3
+rkdhdt=11
+invstate=Ga${Gastr}_Rcg${rkcg}_Rdhdt${rkdhdt}
+
+#################### DATASETS #####################
+
+DATA_DIR=$BASE_DIR/DATA_SETS
+
+SMB_ANOM_DATA=$DATA_DIR/SMB/NorESM1-M_8km_anomaly_1995-2100_EPSG3031.nc
+SMB_CLIM_DATA=$DATA_DIR/SMB/NorESM1-M_8km_clim_1995-2100_EPSG3031.nc
+
+#TOPOGRAPHY_DATA=$DATA_DIR/TOPOGRAPHY/BEDMAP2_MODIFIED.nc
+THICKNESS_DATA=$DATA_DIR/TOPOGRAPHY/BEDMAP2_MODIFIED.nc
+BEDROCK_DATA=$DATA_DIR/TOPOGRAPHY/BEDMAP2_MODIFIED.nc
+nameBedVar=new_bed
+nameThicknessVar=Thickness
+
+VISCOSITY_DATA=$DATA_DIR/VISCOSITY/Antarctic_MeanViscosity_Paterson10.nc
+#SLIP_DATA=
+VELOCITY_DATA=$DATA_DIR/VELOCITY/Amundsen_ice_velocity_900m
+VELOCITY_DATA_X=$DATA_DIR/VELOCITY/Amundsen_ice_velocity_900m
+VELOCITY_DATA_Y=$DATA_DIR/VELOCITY/Amundsen_ice_velocity_900m
+VELX4INI=$VELOCITY_DATA_X.nc
+VELY4INI=$VELOCITY_DATA_Y.nc
+VEL4INV=$VELOCITY_DATA.txt
+nameVxVar=vx
+nameVyVar=vy
+#DHDT_DATA=
+
+#################### PROGNOSTIC  #############
+
+#################### COUPLING PURPOSES #############
+
+NEMO_MESH_MASK_FILE=$DATA_DIR/NEMO/input/nemo_AMUXL025/mesh_mask_AMUXL025.nc
+BATHY_METER_FICH=$DATA_DIR/NEMO/input/nemo_AMUXL025/bathy_meter_AMUXL025_BedMachineAntarctica-2019-05-24.nc
+
+MELT_RATES_NEMO_XY=melt_rates_nemo_xy
+#MELT_RATES_NEMO_TOTAL=melt_rates_nemo_total.txt
+ELMER_MASK_IN_NEMO=elmer_mask_in_nemo.txt
+
+# ??????
+#CPL_MELT_FILE=$DATA_DIR/BMB/AMUXL12-GNJ002tunBM_1d_20080101_20081231_SBC.nc
+#CPL_MELT_FILE=$DATA_DIR/BMB/mesh_mask_AMUXL12_xy.nc
+
+
+
+
+
+

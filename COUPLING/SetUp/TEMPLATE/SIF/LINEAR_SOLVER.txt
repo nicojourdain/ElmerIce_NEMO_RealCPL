@@ -1,0 +1,3 @@
+  Linear System Solver = Direct
+  Linear System Direct Method = mumps
+  Mumps percentage increase working space = Integer 100

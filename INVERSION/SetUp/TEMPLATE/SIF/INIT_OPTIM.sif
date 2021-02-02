@@ -1,0 +1,201 @@
+$name = "<nameINIT>"
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+$rhoi = <RHOI_SI>/(1.0e6*<YEARTOSEC>^2)
+$rhow = <RHOW_SI>/(1.0e6*<YEARTOSEC>^2)
+$gravity = <GRAVITY_SI>*<YEARTOSEC>^2
+$Lf = <LF_SI>*<YEARTOSEC>^2
+$cw = <CW_SI>*<YEARTOSEC>^2
+
+$Kt = <KT>
+
+$zsl = <ZSL>
+$n = <N>
+
+$parmlt = "<PARMLT>"
+$gamma0 = <GAMMA0>
+$glm = <GLM>
+$basinnb = <BASINNB>
+$time_init = <TIME_INIT>
+$epsz = <EPSZ>
+
+$meltfac = rhow*cw/(rhoi*Lf)
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Header
+  Mesh DB "." "mesh_<nbpart>"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Constants
+  Sea level = Real $zsl
+  Water density = Real $rhow
+  Ice density = Real $rhoi
+
+  HMin Critical Thickness = Real 1.0
+
+  Sea Water Specific heat = Real $cw
+  Ice fusion latent heat = Real $Lf
+  Transfer Factor = Real $Kt
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Simulation
+  Coordinate System  = Cartesian 2D 
+  Simulation Type = Steady State
+
+  Output Intervals = 1
+
+  Steady State Max Iterations = 1
+  Steady State Min Iterations = 1
+
+  Output File = "$name$.result"
+  Post File = "$name$.vtu"
+
+  max output level = 10
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+  Initial Condition = 1
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Initial Condition 1
+!! List of variable that must be initialised
+  H = Real 0.0
+  bedrock = Real 0.0
+  Zs= Real 0.0
+  Zb= Real 0.0
+  smb= Real 0.0
+  Mu= Real 0.0
+  alpha = Real 0.0
+!  slc0=Real 0.0
+!  Vobs= Real 0.0
+!  dhdt_obs=Real 0.0
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body Force 1
+  Flow BodyForce 3 = Real $gravity
+! First guess sur alpha
+  alpha = Variable GroundedMask,H, DZs 1, DZs 2, Uobs 1,Uobs 2
+    Real Procedure "LGGEUSF" "Log10CIni"
+  h = Variable h
+    Real procedure "LGGEUSF" "HMin"
+
+  PDC_melt = Variable zb, GroundedMask
+    Real procedure "LGGEUSF" "BasalMeltPDC_ASE"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Material 1
+  SSA Mean Density = Real $rhoi
+  SSA Friction Law = String "linear"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 1
+  Equation = Reader1
+  Procedure = "GridDataReader" "GridDataReader"
+  Filename = File "<THICKNESS_DATA>"
+
+  X Dim Name = String "x"
+  Y Dim Name = String "y"
+
+  X Var Name = String "x"
+  Y Var Name = String "y"
+
+  Variable 1 = File "<nameThicknessVar>"
+  Target Variable 1 = String "h"
+
+  Variable 2 = File "<nameBedVar>"
+  Target Variable 2 = String "bedrock"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 2
+  Equation = "UpD"
+  Variable = -nooutput "dumy"
+    Procedure = "ElmerIceSolvers" "UpdateExport"
+  
+  Exported Variable 1 = h
+  Exported Variable 2 = bedrock
+  !Exported Variable 3 = zs
+  !Exported Variable 4 = zb
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 3
+  Equation = "Flotation"
+  Variable = GroundedMask
+    Procedure = "ElmerIceSolvers" "Flotation"
+  Exported Variable 1 = zs
+  Exported Variable 2 = zb
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 4
+  Equation = "ScatteredInter2"
+  Variable = -nooutput "dumy2"
+
+  procedure = "Scattered2DDataInterpolator" "Scattered2DDataInterpolator"
+
+  Bounding Box dx = Real 20000.0
+
+  Variable 1 = File "smb_clim"
+  Variable 1 data file = File "<SMB_DATA>"
+  Target Variable 1 = String "smb"
+  Variable 1 method = String "li"
+
+  Exported Variable 1 = smb
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 5
+  Equation = "upd2"
+  Variable = -nooutput dummy
+    Procedure = "ElmerIceSolvers" "UpdateExport"
+
+   Exported Variable 1 = PDC_melt
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 6
+  Equation = "ScatteredInter3"
+  !Variable = -nooutput "dumy3"
+
+  procedure = "Scattered2DDataInterpolator" "Scattered2DDataInterpolator"
+
+  Bounding Box dx = Real 20000.0
+
+  Variable 1 = File "Mumean"
+  Variable 1 data file = File "<VISCOSITY_DATA>"
+  Target Variable 1 = String "Mu"
+  Variable 1 method = String "li"
+
+  Variable 2 = File "<nameVxVar>"
+  Target Variable 2 = String "Uobs 1"
+  Variable 2 data file = File "<VELOCITY_DATA_X>"
+
+  Variable 3 = File "<nameVyVar>"
+  Target Variable 3 = String "Uobs 2"
+  Variable 3 data file = File "<VELOCITY_DATA_Y>"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 7
+  Equation = "DZs"
+  !Variable =  -nooutput "DZs"
+  Variable =  "DZs"
+  Variable DOFs = 2
+
+  Procedure = "ElmerIce_MeshAdapt2D" "Compute2DNodalGradient"
+
+  Variable Name = string "Zs"
+  FE consistent average = Logical True
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 8
+  Equation = "BetaIni"
+  Variable = -nooutput dumy
+  Procedure = "ElmerIceSolvers" "UpdateExport"
+
+  Exported Variable 1 = alpha
+  Exported Variable 2 = Mu
+  Exported Variable 3 = -dofs 2 Uobs
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Equation 1
+  Active Solvers (8)= 1 2 3 4 5 6 7 8
+End
+

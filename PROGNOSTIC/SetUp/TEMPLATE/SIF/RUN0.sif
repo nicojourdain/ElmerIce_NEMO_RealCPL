@@ -1,0 +1,328 @@
+$name = "RUN0_"
+!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+$rhoi = <RHOI_SI>/(1.0e6*<YEARTOSEC>^2)
+$rhow = <RHOW_SI>/(1.0e6*<YEARTOSEC>^2)
+$gravity = <GRAVITY_SI>*<YEARTOSEC>^2
+$Lf = <LF_SI>*<YEARTOSEC>^2
+$cw = <CW_SI>*<YEARTOSEC>^2
+
+$Kt = <KT>
+
+$zsl = <ZSL>
+$n = <N>
+
+$parmlt = "<MISMIP_MELT_TYPE>"
+$gamma0 = <GAMMA0>
+$glm = <GLM>
+$basinnb = <BASINNB>
+$time_init = <TIME_INIT>
+$epsz = <EPSZ>
+
+$meltfac = rhow * cw / ( rhoi * Lf )
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Header
+  Mesh DB "." "mesh_<nbpart>"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Constants
+  sea level = Real $zsl
+  water density = Real $rhow
+  Ice density = Real $rhoi
+
+  HMin Critical Thickness = Real 1.0
+
+  Sea Water Specific heat = Real $cw
+  Ice fusion latent heat = Real $Lf
+  Transfer Factor = Real $Kt
+
+  ! For MISMIP_Melt Solver
+  Melt factor = Real $meltfac
+  Minimum thickness to Melt = Real $epsz
+  gamma0 = Real $gamma0
+  basinnb = Integer $basinnb
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Simulation
+  Coordinate System  = Cartesian 2D 
+  Simulation Type = Steady State
+
+  Output Intervals = 1
+
+  Steady State Max Iterations = 1
+  Steady State Min Iterations = 1
+
+  Output File = "$name$.result"
+  Post File = "$name$.vtu"
+
+  max output level = 10
+
+  ! Melt
+  Experiment initial time = Real $time_init
+  ! Melt Parameterization, possible values = lin, quad, plus
+  Melt Parameterization = String $parmlt
+  Grounding Line Melt = Logical $glm
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+  Initial Condition = 1
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Initial Condition 1
+!! List of variable that must be initialised
+  h = Real 0.0
+  bedrock = Real 0.0
+  zs = Real 0.0
+  zb = Real 0.0
+  smb = Real 0.0
+  eta = Real 0.0
+  cwl = Real 0.0
+  ! different kinds of melts
+  pdc_melt = Real 0.0
+  nc_melt = Real 0.0
+  mismip_melt = Real 0.0
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body Force 1
+  h = Variable h
+    Real procedure "LGGEUSF" "HMin"
+
+  pdc_melt = Variable zb, GroundedMask
+    Real procedure "LGGEUSF" "BasalMeltPDC_ASE"
+
+  ! weertman non linear friction law 
+  !alpha3 = Variable SSAVelocity 1, SSAVelocity 2
+  !  Real procedure "LGGEUSF" "Alpha_3"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Material 1
+  SSA Mean Density = Real $rhoi
+
+  Min Zs Bottom = Equals bedrock
+  Max Zs Bottom = Real 1.0e6
+
+  ! slip coeff for the SSA
+  !SSA Friction Law = String "linear"
+  !SSA Friction Parameter = Variable alpha
+  !    REAL procedure "LGGEUSF" "TenPowerA"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 1
+  Equation = Reader1
+  Procedure = "GridDataReader" "GridDataReader"
+  Filename = File "<THICKNESS_DATA>"
+
+  X Dim Name = String "x"
+  Y Dim Name = String "y"
+
+  X Var Name = String "x"
+  Y Var Name = String "y"
+
+  Variable 1 = File "<nameThicknessVar>"
+  Target Variable 1 = String "h"
+
+  Variable 2 = File "<nameBedVar>"
+  Target Variable 2 = String "bedrock"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 2
+  Equation = "ScatteredInter2"
+  Variable = -nooutput "dumy"
+
+  procedure = "Scattered2DDataInterpolator" "Scattered2DDataInterpolator"
+
+  Bounding Box dx = Real 20000.0
+
+  Variable 1 = File cwl
+  Variable 1 data file = File "<CWL_DATA>"
+  Variable 1 method = String "li"
+
+  Exported Variable 1 = cwl
+
+  Variable 2 = File eta
+  Variable 2 data file = File "<ETA_DATA>"
+  Variable 2 method = String "li"
+
+  Exported Variable 2 = eta
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 3
+  Equation = Reader3
+  Procedure = "GridDataReader" "GridDataReader"
+  Variable = -nooutput dumy3
+
+  !---- NOTE: File is case sensitive, String is not!
+  Filename = File "<SMB_DATA>"
+
+  X Dim Name = String "x"
+  Y Dim Name = String "y"
+
+  Variable 1 = File "smb_clim"
+  Target Variable 1 = String "smb"
+  Exported Variable 1 = smb
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 4
+  Equation = "UpD4"
+  Variable = -nooutput "dumy"
+    Procedure = "ElmerIceSolvers" "UpdateExport"
+  
+  Exported Variable 1 = h
+  Exported Variable 2 = bedrock
+  Exported Variable 3 = zs
+  Exported Variable 4 = zb
+  Exported Variable 5 = pdc_melt
+  !Exported Variable 6 = alpha3
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 5
+  Equation = "Flotation"
+  Variable = GroundedMask
+    Procedure = "ElmerIceSolvers" "Flotation"
+
+  Exported Variable 1 = zs
+  Exported Variable 2 = zb
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 6
+  Equation = "UpD6"
+  Variable = -nooutput "dumy6"
+    Procedure = "ElmerIceSolvers" "UpdateExport"
+
+  Exported Variable 1 = pdc_melt
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 7
+  Exec Solver = <EXEC_MISMIP_MELT>
+  Equation = Reader7
+  Procedure = "GridDataReader" "GridDataReader"
+  Variable = -nooutput dumy7
+
+  !---- NOTE: File is case sensitive, String is not!
+  Filename = File "<ICESHELVES_MASK_DATA>"
+
+  X Dim Name = String "x"
+  Y Dim Name = String "y"
+
+  Variable 1 = File "icemask_shelves"
+  Target Variable 1 = String "shelves"
+  Exported Variable 1 = shelves
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 8
+  Exec Solver = <EXEC_MISMIP_MELT>
+  Equation = Reader8
+  Procedure = "GridDataReader" "GridDataReader"
+  Variable = -nooutput dumy8
+
+  !---- NOTE: File is case sensitive, String is not!
+  Filename = File "<BASINS>"
+
+  X Dim Name = String "x"
+  Y Dim Name = String "y"
+
+  Variable 1 = File "basinNumber"
+  Target Variable 1 = String "basinNumber"
+  Exported Variable 1 = basinNumber
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 9
+  Exec Solver = <EXEC_MISMIP_MELT>
+  Equation = Reader9
+  Procedure = "GridDataReader" "GridDataReader"
+  Variable = -nooutput dumy9
+
+  !---- NOTE: File is case sensitive, String is not!
+  Filename = File "<DELTAT>"
+
+  X Dim Name = String "x"
+  Y Dim Name = String "y"
+
+  Variable 1 = File "deltaT_basin"
+  Target Variable 1 = String "deltaT_basin"
+  Exported Variable 1 = deltaT_basin
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 10
+  Exec Solver = <EXEC_MISMIP_MELT>
+  Equation = Reader10
+  Procedure = "GridDataReader" "GridDataReader"
+  Variable = -nooutput dumy10
+
+  !Exec Interval = $floor(1.0/dt)
+
+!---- NOTE: File is case sensitive, String is not!
+  Filename = File "<TF>"
+
+  X Dim Name = String "x"
+  Y Dim Name = String "y"
+  Z Dim Name = String "z"
+  !Time Dim Name = String "time"
+
+  X Var Name = String "x"
+  Y Var Name = String "y"
+  Z Dim Name = String "z"
+  !Time Var Name = String "time"
+
+  !--- Interpolation variables
+  Epsilon X = Real 1.0e-2
+  Epsilon Y = Real 1.0e-2
+  Epsilon Z = Real 1.0e-2
+  !Epsilon Time = Real 0.01
+
+!--- 
+  Variable 1 = File "thermal_forcing"
+  Target Variable 1 = String "thermal_forcing"
+  Exported Variable 1 = thermal_forcing
+
+  !Is Time Counter = Logical True
+
+  Vertical Coordinate Given by zb = Logical True
+  External Var = String "zb"
+
+ ! simulation time is converted in netcdf time index
+ ! i.e. if time=[0,1[ read time(1), etc...
+  !Is Time Index = Logical True
+  !Time Point = Variable Time
+  !  REAL MATC "floor(tx)+1"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 11
+  Equation = "Save Scalars"
+  Procedure = File "SaveData" "SaveScalars"
+
+  Filename = File "Scalars_$name$.dat"
+
+  Parallel Reduce = logical True
+
+! int H = Volume
+  Variable 1 = "H"
+  Operator 1 = "int"
+! area
+  Variable 2 = "H"
+  Operator 2 = "volume"
+! area grounded
+  Variable 3 = "groundedmask"
+  Operator 3 = "volume"
+! int SMB
+  Variable 4 = "smb"
+  Operator 4 = "int"
+! pdc melt
+  Variable 5 = "pdc_melt"
+  Operator 5 = "int"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Equation 1
+  Active Solvers (11)= 1 2 3 4 5 6 7 8 9 10 11
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Boundary Condition 1
+  Name = "Ice Front"
+  Target Boundaries = 1
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
